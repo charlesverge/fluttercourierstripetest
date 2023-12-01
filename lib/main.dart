@@ -5,9 +5,15 @@ import 'package:fluttercourierstripetest/env.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:courier_flutter/courier_flutter.dart';
 import 'package:courier_flutter/courier_provider.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  Stripe.publishableKey = Env.publishKey;
+  Stripe.merchantIdentifier = Env.merchantIdentifier;
+  await Stripe.instance.applySettings();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -66,6 +72,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
+  Map<String, dynamic>? paymentIntent;
 
   @override
   void initState() {
@@ -78,8 +85,7 @@ class _MyHomePageState extends State<MyHomePage> {
       final token = await FirebaseMessaging.instance.getToken();
 
       if (token != null) {
-        Courier.shared.setTokenForProvider(
-            provider: CourierPushProvider.firebaseFcm, token: token);
+        Courier.shared.setTokenForProvider(provider: CourierPushProvider.firebaseFcm, token: token);
       }
     } catch (e) {
       print(e);
@@ -87,8 +93,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // Listener to firebase token change
     FirebaseMessaging.instance.onTokenRefresh.listen((fcmToken) {
-      Courier.shared.setTokenForProvider(
-          provider: CourierPushProvider.firebaseFcm, token: fcmToken);
+      Courier.shared.setTokenForProvider(provider: CourierPushProvider.firebaseFcm, token: fcmToken);
     }).onError((error) {
       print(error);
     });
@@ -96,10 +101,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future _signIn() async {
 // Request / Get Notification Permissions
-    final currentPermissionStatus =
-        await Courier.shared.getNotificationPermissionStatus();
-    final requestPermissionStatus =
-        await Courier.shared.requestNotificationPermission();
+    final currentPermissionStatus = await Courier.shared.getNotificationPermissionStatus();
+    final requestPermissionStatus = await Courier.shared.requestNotificationPermission();
 
 // Handle push events
     final pushListener = Courier.shared.addPushListener(
@@ -111,10 +114,94 @@ class _MyHomePageState extends State<MyHomePage> {
       },
     );
     const courierUserId = 'testuserid';
-    await Courier.shared.signIn(
-        accessToken: Env.authKey,
-        clientKey: Env.clientKey,
-        userId: courierUserId);
+    await Courier.shared.signIn(accessToken: Env.authKey, clientKey: Env.clientKey, userId: courierUserId);
+  }
+
+  createPaymentIntent(String amount, String currency) async {
+    try {
+      //Request body
+      Map<String, dynamic> body = {
+        'amount': amount,
+        'currency': currency,
+      };
+
+      //Make post request to Stripe
+      var response = await http.post(
+        Uri.parse('https://api.stripe.com/v1/payment_intents'),
+        headers: {'Authorization': 'Bearer ${Env.stripeSecrect}', 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: body,
+      );
+      return json.decode(response.body);
+    } catch (err) {
+      throw Exception(err.toString());
+    }
+  }
+
+  Future<void> makePayment() async {
+    try {
+      paymentIntent = await createPaymentIntent('1000', 'USD');
+
+      //STEP 2: Initialize Payment Sheet
+      await Stripe.instance
+          .initPaymentSheet(
+              paymentSheetParameters: SetupPaymentSheetParameters(
+                  paymentIntentClientSecret: paymentIntent!['client_secret'], //Gotten from payment intent
+                  style: ThemeMode.dark,
+                  merchantDisplayName: 'Ikay'))
+          .then((value) {});
+
+      //STEP 3: Display Payment sheet
+      displayPaymentSheet();
+    } catch (err) {
+      throw Exception(err);
+    }
+  }
+
+  displayPaymentSheet() async {
+    try {
+      await Stripe.instance.presentPaymentSheet().then((value) {
+        showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        color: Colors.green,
+                        size: 100.0,
+                      ),
+                      SizedBox(height: 10.0),
+                      Text("Payment Successful!"),
+                    ],
+                  ),
+                ));
+
+        paymentIntent = null;
+      }).onError((error, stackTrace) {
+        throw Exception(error);
+      });
+    } on StripeException catch (e) {
+      print('Error is:---> $e');
+      AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: const [
+                Icon(
+                  Icons.cancel,
+                  color: Colors.red,
+                ),
+                Text("Payment Failed"),
+              ],
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      print('$e');
+    }
   }
 
   void _incrementCounter() {
@@ -169,6 +256,11 @@ class _MyHomePageState extends State<MyHomePage> {
               onPressed: _signIn,
               tooltip: 'SignIn',
               child: const Icon(Icons.start),
+            ),
+            FloatingActionButton(
+              onPressed: makePayment,
+              tooltip: 'Stripe',
+              child: const Icon(Icons.money),
             ),
             const Text(
               'You have pushed the button this many times:',
