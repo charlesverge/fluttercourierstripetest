@@ -37,6 +37,8 @@ dependencies:
   cupertino_icons: ^1.0.2
   courier_flutter: ^2.0.1
   flutter_stripe: ^9.6.0
+  firebase_messaging: ^14.7.6
+  firebase_core: ^2.24.0
 
 dev_dependencies:
   flutter_test:

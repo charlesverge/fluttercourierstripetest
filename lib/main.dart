@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:fluttercourierstripetest/firebase_options.dart';
+import 'package:fluttercourierstripetest/env.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:courier_flutter/courier_flutter.dart';
+import 'package:courier_flutter/courier_provider.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const MyApp());
 }
 
@@ -57,6 +67,56 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future _start() async {
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+
+      if (token != null) {
+        Courier.shared.setTokenForProvider(
+            provider: CourierPushProvider.firebaseFcm, token: token);
+      }
+    } catch (e) {
+      print(e);
+    }
+
+    // Listener to firebase token change
+    FirebaseMessaging.instance.onTokenRefresh.listen((fcmToken) {
+      Courier.shared.setTokenForProvider(
+          provider: CourierPushProvider.firebaseFcm, token: fcmToken);
+    }).onError((error) {
+      print(error);
+    });
+  }
+
+  Future _signIn() async {
+// Request / Get Notification Permissions
+    final currentPermissionStatus =
+        await Courier.shared.getNotificationPermissionStatus();
+    final requestPermissionStatus =
+        await Courier.shared.requestNotificationPermission();
+
+// Handle push events
+    final pushListener = Courier.shared.addPushListener(
+      onPushClicked: (push) {
+        print(push);
+      },
+      onPushDelivered: (push) {
+        print(push);
+      },
+    );
+    const courierUserId = 'testuserid';
+    await Courier.shared.signIn(
+        accessToken: Env.authKey,
+        clientKey: Env.clientKey,
+        userId: courierUserId);
+  }
+
   void _incrementCounter() {
     setState(() {
       // This call to setState tells the Flutter framework that something has
@@ -105,6 +165,11 @@ class _MyHomePageState extends State<MyHomePage> {
           // wireframe for each widget.
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
+            FloatingActionButton(
+              onPressed: _signIn,
+              tooltip: 'SignIn',
+              child: const Icon(Icons.start),
+            ),
             const Text(
               'You have pushed the button this many times:',
             ),
