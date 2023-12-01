@@ -1,6 +1,6 @@
 package com.example.fluttercourierstripetest
 
-import io.flutter.embedding.android.FlutterFragmentActivity
+import com.courier.courier_flutter.CourierFlutterFragmentActivity
 
-class MainActivity: FlutterFragmentActivity() {
+class MainActivity: CourierFlutterFragmentActivity() {
 }
